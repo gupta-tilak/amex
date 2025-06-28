@@ -1,2 +1,9 @@
 dataset/
 venv
+submission.csv
+*.ipynb_checkpoints
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl   
