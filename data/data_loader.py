@@ -1,8 +1,11 @@
 import pandas as pd
 import os
 
-# DATA_DIR should be relative to the project root now
-DATA_DIR = os.path.join(os.path.dirname(__file__), '../dataset')
+# DATA_DIR should point to the dataset directory where the parquet files are located
+DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'dataset')
+
+# for kaggle uncomment this
+# DATA_DIR = os.path.dirname(os.path.dirname(__file__))
 
 # File names (update if file names change)
 TRAIN_FILE = 'train_data_converted.parquet'

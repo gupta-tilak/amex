@@ -54,144 +54,144 @@ def safe_aggregation(group, column, agg_func):
         return 0 if agg_func in ['mean', 'sum', 'std', 'count', 'nunique'] else 'Unknown'
 
 def create_customer_behavioral_features(train_data, add_event, add_trans, offer_metadata):
-    """Create comprehensive customer behavioral profiles with robust error handling"""
-    print("Creating customer behavioral features...")
+    """Create focused customer behavioral profiles with priority features only"""
+    print("Creating focused customer behavioral features with priority features...")
+    
+    # Define priority features as requested
+    priority_features = [
+        'f28', 'f29',  # CTR features (most predictive)
+        'f217', 'f219',  # Offer value features
+        'f152', 'f157', 'f169'  # Top spending categories
+    ]
     
     try:
-        # Customer event patterns with safe aggregation
+        # Customer event patterns - simplified with priority focus
         customer_event_features = pd.DataFrame({'id2': train_data['id2'].unique()})
         
         if not add_event.empty and 'id2' in add_event.columns:
+            # Focus only on essential event metrics
             event_aggs = add_event.groupby('id2').agg({
-                'id3': lambda x: safe_aggregation(add_event[add_event['id2'].isin([x.name])], 'id3', 'count'),
-                'id4': lambda x: safe_aggregation(add_event[add_event['id2'].isin([x.name])], 'id4', 'count')
+                'id3': 'count'  # Only count, not count+nunique
             }).reset_index()
             
-            event_aggs.columns = ['id2', 'event_count', 'event_diversity']
+            event_aggs.columns = ['id2', 'event_count']
             customer_event_features = customer_event_features.merge(event_aggs, on='id2', how='left')
         
         # Fill missing values with defaults
         customer_event_features['event_count'] = customer_event_features.get('event_count', 0).fillna(0)
-        customer_event_features['event_diversity'] = customer_event_features.get('event_diversity', 0).fillna(0)
-        customer_event_features['event_recency'] = 999  # Default recency
-        customer_event_features['preferred_category'] = 'Unknown'
         
     except Exception as e:
         print(f"Warning: Event feature creation failed: {e}")
         customer_event_features = pd.DataFrame({
             'id2': train_data['id2'].unique(),
-            'event_count': 0,
-            'event_diversity': 0,
-            'event_recency': 999,
-            'preferred_category': 'Unknown'
+            'event_count': 0
         })
     
     try:
-        # Customer transaction patterns with safe aggregation
+        # Customer transaction patterns - focused on priority features
         customer_trans_features = pd.DataFrame({'id2': train_data['id2'].unique()})
         
         if not add_trans.empty and 'id2' in add_trans.columns:
-            # Use first available numeric column for transaction amounts
-            amount_col = None
-            for col in add_trans.columns:
-                if col.startswith('f') and add_trans[col].dtype in ['float64', 'float32', 'int64', 'int32']:
-                    amount_col = col
-                    break
+            # Focus on priority spending categories only
+            available_priority_features = [col for col in priority_features if col in add_trans.columns]
             
-            if amount_col:
+            if available_priority_features:
+                # Use only mean aggregation for priority features
                 trans_aggs = add_trans.groupby('id2').agg({
-                    amount_col: ['mean', 'sum', 'std', 'count']
+                    col: 'mean' for col in available_priority_features
                 }).reset_index()
                 
-                trans_aggs.columns = ['id2', 'avg_trans_amount', 'total_trans_amount', 'trans_amount_std', 'trans_count']
+                # Rename columns for clarity
+                rename_dict = {col: f'avg_{col}' for col in available_priority_features}
+                trans_aggs = trans_aggs.rename(columns=rename_dict)
+                
                 customer_trans_features = customer_trans_features.merge(trans_aggs, on='id2', how='left')
         
         # Fill missing values with defaults
-        for col in ['avg_trans_amount', 'total_trans_amount', 'trans_amount_std', 'trans_count']:
-            customer_trans_features[col] = customer_trans_features.get(col, 0).fillna(0)
-        
-        customer_trans_features['preferred_merchant'] = 'Unknown'
-        customer_trans_features['trans_recency'] = 999
+        for col in customer_trans_features.columns:
+            if col != 'id2':
+                customer_trans_features[col] = customer_trans_features[col].fillna(0)
         
     except Exception as e:
         print(f"Warning: Transaction feature creation failed: {e}")
         customer_trans_features = pd.DataFrame({
-            'id2': train_data['id2'].unique(),
-            'avg_trans_amount': 0,
-            'total_trans_amount': 0,
-            'trans_amount_std': 0,
-            'trans_count': 0,
-            'preferred_merchant': 'Unknown',
-            'trans_recency': 999
+            'id2': train_data['id2'].unique()
         })
     
     try:
-        # Offer-based features with safe aggregation
+        # Offer-based features - simplified
         offer_features = pd.DataFrame({'id3': train_data['id3'].unique()})
         
         if not offer_metadata.empty and 'id3' in offer_metadata.columns:
-            # Find discount rate column
-            discount_col = None
-            for col in ['f376', 'discount_rate', 'rate']:
-                if col in offer_metadata.columns:
-                    discount_col = col
-                    break
+            # Focus on priority offer features only
+            offer_priority_features = [col for col in ['f217', 'f219'] if col in offer_metadata.columns]
             
-            if discount_col:
+            if offer_priority_features:
                 offer_aggs = offer_metadata.groupby('id3').agg({
-                    discount_col: 'mean'
+                    col: 'median' for col in offer_priority_features  # Use median instead of mean
                 }).reset_index()
-                offer_aggs.columns = ['id3', 'avg_discount_rate']
+                
+                # Rename columns for clarity
+                rename_dict = {col: f'offer_{col}' for col in offer_priority_features}
+                offer_aggs = offer_aggs.rename(columns=rename_dict)
+                
                 offer_features = offer_features.merge(offer_aggs, on='id3', how='left')
         
         # Fill missing values with defaults
-        offer_features['avg_discount_rate'] = offer_features.get('avg_discount_rate', 0.1).fillna(0.1)
-        offer_features['offer_type_mode'] = 2
-        offer_features['offer_category_mode'] = 'Unknown'
+        for col in offer_features.columns:
+            if col != 'id3':
+                offer_features[col] = offer_features[col].fillna(0.1)
         
     except Exception as e:
         print(f"Warning: Offer feature creation failed: {e}")
         offer_features = pd.DataFrame({
-            'id3': train_data['id3'].unique(),
-            'avg_discount_rate': 0.1,
-            'offer_type_mode': 2,
-            'offer_category_mode': 'Unknown'
+            'id3': train_data['id3'].unique()
         })
     
     return customer_event_features, customer_trans_features, offer_features
 
 def create_customer_segments_robust(train_data, customer_event_features, customer_trans_features):
-    """Create customer segments with robust error handling"""
-    print("Creating customer segments with robust clustering...")
+    """Create customer segments with focused priority features"""
+    print("Creating customer segments with priority features...")
     
     try:
         # Merge behavioral features with main dataset
         enriched_data = train_data.merge(customer_event_features, on='id2', how='left')
         enriched_data = enriched_data.merge(customer_trans_features, on='id2', how='left')
         
-        # Fill missing behavioral features with defaults
-        behavioral_columns = [
-            'event_count', 'event_diversity', 'event_recency',
-            'avg_trans_amount', 'total_trans_amount', 'trans_count', 'trans_recency'
+        # Focus on priority features for clustering
+        priority_features = [
+            'f28', 'f29',  # CTR features (most predictive)
+            'f217', 'f219',  # Offer value features
+            'f152', 'f157', 'f169'  # Top spending categories
         ]
         
-        for col in behavioral_columns:
+        # Get available priority features
+        available_priority_features = [col for col in priority_features if col in enriched_data.columns]
+        
+        # Add behavioral features if available
+        behavioral_columns = ['event_count']
+        behavioral_columns.extend([col for col in customer_trans_features.columns if col != 'id2'])
+        
+        clustering_features = available_priority_features + behavioral_columns
+        
+        # Fill missing values with defaults
+        for col in clustering_features:
             if col in enriched_data.columns:
                 enriched_data[col] = enriched_data[col].fillna(0)
             else:
                 enriched_data[col] = 0
         
         # Prepare features for clustering
-        clustering_features = behavioral_columns
         clustering_data = enriched_data[clustering_features].copy()
         
         # Check for sufficient variation
         variation_check = clustering_data.std().sum()
         if variation_check < 1e-6:
             print("Warning: Insufficient variation in behavioral data. Using simple segmentation.")
-            # Create simple segments based on transaction count
+            # Create simple segments based on event count
             enriched_data['customer_segment'] = pd.cut(
-                enriched_data['trans_count'], 
+                enriched_data['event_count'], 
                 bins=3, 
                 labels=[0, 1, 2]
             ).fillna(0).astype(int)
@@ -201,21 +201,21 @@ def create_customer_segments_robust(train_data, customer_event_features, custome
         scaler = StandardScaler()
         scaled_features = scaler.fit_transform(clustering_data)
         
-        # Use MiniBatchKMeans for efficiency
-        n_clusters = min(5, max(3, len(scaled_features) // 50000))
+        # Use MiniBatchKMeans for efficiency with fewer clusters
+        n_clusters = min(3, max(2, len(scaled_features) // 100000))  # Reduced from 5 to 3
         
         kmeans = MiniBatchKMeans(
             n_clusters=n_clusters,
             random_state=42,
             batch_size=min(1000, len(scaled_features) // 10),
-            max_iter=100,
-            n_init=3
+            max_iter=50,  # Reduced from 100 to 50
+            n_init=2  # Reduced from 3 to 2
         )
         
         customer_segments = kmeans.fit_predict(scaled_features)
         enriched_data['customer_segment'] = customer_segments
         
-        print(f"Created {n_clusters} customer segments successfully")
+        print(f"Created {n_clusters} customer segments with {len(clustering_features)} priority features")
         return enriched_data, kmeans, scaler, clustering_features
         
     except Exception as e:
@@ -224,10 +224,10 @@ def create_customer_segments_robust(train_data, customer_event_features, custome
         return enriched_data, None, None, []
 
 def robust_imputation_strategy(data_with_offers, remaining_features):
-    """Robust imputation with multiple fallback strategies"""
-    print("Applying robust imputation strategy...")
+    """Focused imputation with limited feature scope"""
+    print("Applying focused imputation strategy...")
     
-    for feature in remaining_features[:30]:  # Limit for performance
+    for feature in remaining_features[:15]:  # Reduced from 30 to 15 for performance
         if feature not in data_with_offers.columns:
             continue
             
@@ -278,8 +278,8 @@ def robust_imputation_strategy(data_with_offers, remaining_features):
     return data_with_offers
 
 def advanced_segment_based_imputation_robust(data, offer_features):
-    """Robust imputation strategy with comprehensive error handling"""
-    print("Performing robust advanced segment-based imputation...")
+    """Focused imputation strategy with priority features only"""
+    print("Performing focused imputation with priority features...")
     
     try:
         # Merge offer features safely
@@ -287,72 +287,77 @@ def advanced_segment_based_imputation_robust(data, offer_features):
     except Exception as e:
         print(f"Warning: Offer merge failed: {e}")
         data_with_offers = data.copy()
-        # Add default offer features
-        data_with_offers['avg_discount_rate'] = 0.1
-        data_with_offers['offer_type_mode'] = 2
-        data_with_offers['offer_category_mode'] = 'Unknown'
     
-    # Define feature groups for targeted imputation
-    offer_related_features = [col for col in ['f217', 'f219', 'f220', 'f221', 'f222'] 
-                             if col in data_with_offers.columns]
-    behavioral_features = [col for col in ['f28', 'f29', 'f30', 'f31'] 
-                          if col in data_with_offers.columns]
+    # Define priority features for targeted imputation
+    priority_features = [
+        'f28', 'f29',  # CTR features (most predictive)
+        'f217', 'f219',  # Offer value features
+        'f152', 'f157', 'f169'  # Top spending categories
+    ]
     
-    # Get remaining numerical features (limited for performance)
+    # Focus only on priority features that exist in the dataset
+    available_priority_features = [col for col in priority_features if col in data_with_offers.columns]
+    
+    # Limit remaining features to top 20 for performance
     numerical_features = data_with_offers.select_dtypes(include=[np.number]).columns.tolist()
     remaining_features = [col for col in numerical_features
                          if col.startswith('f') and 
-                         col not in offer_related_features + behavioral_features][:40]
+                         col not in available_priority_features][:20]  # Reduced from 40 to 20
     
-    # Phase 1: Offer-based imputation
-    print("Phase 1: Offer-based imputation...")
+    # Phase 1: Priority features imputation
+    print("Phase 1: Priority features imputation...")
     try:
-        for feature in offer_related_features:
-            if 'offer_type_mode' in data_with_offers.columns:
-                for offer_type in data_with_offers['offer_type_mode'].unique():
-                    if pd.notna(offer_type):
-                        type_mask = (data_with_offers['offer_type_mode'] == offer_type)
-                        missing_mask = (data_with_offers[feature] == -999)
-                        target_mask = type_mask & missing_mask
-                        
-                        if target_mask.sum() > 0:
-                            source_data = data_with_offers[type_mask & (~missing_mask)][feature]
-                            if len(source_data) > 0:
-                                fill_value = source_data.median()
-                                if pd.notna(fill_value):
-                                    data_with_offers.loc[target_mask, feature] = fill_value
-    except Exception as e:
-        print(f"Warning: Offer-based imputation failed: {e}")
-    
-    # Phase 2: Behavioral features imputation
-    print("Phase 2: Behavioral features imputation...")
-    try:
-        for feature in behavioral_features:
-            missing_mask = (data_with_offers[feature] == -999)
+        for feature in available_priority_features:
+            missing_mask = (data_with_offers[feature] == -999) | (data_with_offers[feature].isna())
             if missing_mask.sum() > 0:
-                valid_data = data_with_offers[~missing_mask][feature]
-                if len(valid_data) > 0:
-                    fill_value = valid_data.median()
-                    if pd.notna(fill_value):
-                        data_with_offers.loc[missing_mask, feature] = fill_value
+                print(f"Imputing {missing_mask.sum()} missing values in priority feature {feature}")
+                
+                # Strategy 1: Segment-based imputation for priority features
+                if 'customer_segment' in data_with_offers.columns:
+                    for segment in data_with_offers['customer_segment'].unique():
+                        segment_mask = (data_with_offers['customer_segment'] == segment) & missing_mask
+                        if segment_mask.sum() > 0:
+                            segment_data = data_with_offers[
+                                (data_with_offers['customer_segment'] == segment) & 
+                                (~missing_mask)
+                            ][feature]
+                            
+                            if len(segment_data) > 0:
+                                fill_value = segment_data.median()
+                                if pd.notna(fill_value):
+                                    data_with_offers.loc[segment_mask, feature] = fill_value
+                                    missing_mask = missing_mask & (~segment_mask)
+                
+                # Strategy 2: Global median for remaining values
+                remaining_missing = missing_mask.sum()
+                if remaining_missing > 0:
+                    valid_data = data_with_offers[~missing_mask][feature]
+                    if len(valid_data) > 0:
+                        global_fill = valid_data.median()
+                        if pd.notna(global_fill):
+                            data_with_offers.loc[missing_mask, feature] = global_fill
+                        else:
+                            data_with_offers.loc[missing_mask, feature] = 0
                     else:
                         data_with_offers.loc[missing_mask, feature] = 0
-                else:
-                    data_with_offers.loc[missing_mask, feature] = 0
     except Exception as e:
-        print(f"Warning: Behavioral imputation failed: {e}")
+        print(f"Warning: Priority features imputation failed: {e}")
     
-    # Phase 3: Remaining features with robust strategy
-    print("Phase 3: Robust imputation for remaining features...")
+    # Phase 2: Remaining features with simplified strategy
+    print("Phase 2: Simplified imputation for remaining features...")
     data_with_offers = robust_imputation_strategy(data_with_offers, remaining_features)
     
-    # Phase 4: Categorical features
-    print("Phase 4: Categorical feature imputation...")
+    # Phase 3: Categorical features (minimal)
+    print("Phase 3: Minimal categorical feature imputation...")
     try:
-        categorical_features = data_with_offers.select_dtypes(include=['object']).columns.tolist()
+        categorical_features = data_with_offers.select_dtypes(include=['object', 'category']).columns.tolist()
+        # Convert all categorical columns to string type to avoid Categorical assignment errors
         for feature in categorical_features:
             if feature in data_with_offers.columns:
-                missing_mask = (data_with_offers[feature] == 'Unknown') | (data_with_offers[feature].isna())
+                data_with_offers[feature] = data_with_offers[feature].astype(str)
+        for feature in categorical_features[:5]:  # Limit to 5 categorical features
+            if feature in data_with_offers.columns:
+                missing_mask = (data_with_offers[feature] == 'Unknown') | (data_with_offers[feature].isna()) | (data_with_offers[feature] == 'nan')
                 if missing_mask.sum() > 0:
                     valid_data = data_with_offers[~missing_mask][feature]
                     if len(valid_data) > 0:
@@ -363,6 +368,39 @@ def advanced_segment_based_imputation_robust(data, offer_features):
         print(f"Warning: Categorical imputation failed: {e}")
     
     return data_with_offers
+
+def create_priority_customer_aggs(df):
+    """Create customer aggregations focusing only on priority features with limited aggregation functions"""
+    print("Creating priority customer aggregations...")
+    
+    # Define priority features as requested
+    priority_features = [
+        'f28', 'f29',  # CTR features (most predictive)
+        'f217', 'f219',  # Offer value features
+        'f152', 'f157', 'f169'  # Top spending categories
+    ]
+    
+    # Get available priority features
+    available_features = [col for col in priority_features if col in df.columns]
+    
+    if not available_features:
+        print("Warning: No priority features found in dataset")
+        return pd.DataFrame({'id2': df['id2'].unique()})
+    
+    # Create focused aggregations with limited functions as requested
+    customer_aggs = df.groupby('id2').agg({
+        'f28': 'mean',  # Only mean, not mean+sum+std
+        'f29': 'mean',
+        'f217': 'median'
+    }).reset_index()
+    
+    # Add other priority features if available
+    for feature in available_features:
+        if feature not in ['f28', 'f29', 'f217']:
+            customer_aggs[feature] = df.groupby('id2')[feature].mean().values
+    
+    print(f"Created customer aggregations for {len(available_features)} priority features")
+    return customer_aggs
 
 def clean_train_data_advanced_robust(df, add_event, add_trans, offer_metadata):
     """Robust advanced cleaning with comprehensive error handling"""
@@ -396,22 +434,36 @@ def clean_train_data_advanced_robust(df, add_event, add_trans, offer_metadata):
             df, add_event, add_trans, offer_metadata
         )
         
+        # Create priority customer aggregations
+        priority_customer_aggs = create_priority_customer_aggs(df)
+        
         # Create customer segments with robust clustering
         enriched_data, kmeans_model, scaler, clustering_features = create_customer_segments_robust(
             df, customer_event_features, customer_trans_features
         )
+        
+        # Merge priority customer aggregations
+        enriched_data = enriched_data.merge(priority_customer_aggs, on='id2', how='left')
         
         # Perform robust advanced imputation
         final_data = advanced_segment_based_imputation_robust(enriched_data, offer_features)
         
         # Clean up temporary columns
         columns_to_remove = [
-            'event_count', 'event_diversity', 'event_recency', 'preferred_category',
+            'event_count',  # Keep this as it's still created
+            # Remove old behavioral columns that are no longer created
+            'event_diversity', 'event_recency', 'preferred_category',
             'avg_trans_amount', 'total_trans_amount', 'trans_amount_std',
             'trans_count', 'preferred_merchant', 'trans_recency',
             'avg_discount_rate', 'offer_type_mode', 'offer_category_mode'
         ]
         final_data = final_data.drop(columns=[col for col in columns_to_remove if col in final_data.columns], errors='ignore')
+        
+        # Fill missing values in priority aggregation columns
+        priority_agg_columns = [col for col in final_data.columns if col in ['f28', 'f29', 'f217', 'f219', 'f152', 'f157', 'f169']]
+        for col in priority_agg_columns:
+            if col in final_data.columns:
+                final_data[col] = final_data[col].fillna(0)
         
         # Final validation and cleanup
         numeric_cols = final_data.select_dtypes(include=[np.number]).columns
